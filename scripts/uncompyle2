@@ -1,4 +1,4 @@
-#! python
+#! /usr/bin/env python
 # Mode: -*- python -*-
 #
 # Copyright (c) 2000-2002 by hartmut Goebel <h.goebel@crazy-compilers.com>
@@ -29,6 +29,7 @@ Options:
   --verify      compare generated source with input byte-code
                 (requires -o)
   --help        show this message
+  -k            keep existing decompiled files (no overwrite)
 
 Debugging Options:
   --showasm   -a  include byte-code                  (disables --verify)
@@ -52,7 +53,7 @@ if sys.version[:3] != '2.7':
     print >>sys.stderr, 'Error:  uncompyle2 requires Python 2.7.'
     sys.exit(-1)
     
-showasm = showast = do_verify = numproc = recurse_dirs = 0
+showasm = showast = do_verify = numproc = recurse_dirs = keep_existing = 0
 outfile = '-'
 out_base = None
 codes = []
@@ -60,8 +61,8 @@ timestamp = True
 timestampfmt = "# %Y.%m.%d %H:%M:%S %Z"
 
 try:
-    opts, files = getopt.getopt(sys.argv[1:], 'hatdro:c:p:',
-                           ['help', 'verify', 'showast', 'showasm'])
+    opts, files = getopt.getopt(sys.argv[1:], 'khatdro:c:p:',
+                           ['help', 'verify', 'showast', 'showasm','keep-existing'])
 except getopt.GetoptError, e:
     print >>sys.stderr, '%s: %s' % (os.path.basename(sys.argv[0]), e)
     sys.exit(-1)    
@@ -78,6 +79,8 @@ for opt, val in opts:
     elif opt in ('--showast', '-t'):
         showast = 1
         do_verify = 0
+    elif opt in ('--keep-existing', '-k'):
+        keep_existing = 1
     elif opt == '-o':
         outfile = val
     elif opt == '-d':
@@ -126,8 +129,10 @@ if timestamp:
     print time.strftime(timestampfmt)
 if numproc <= 1:
     try:
-        result = main(src_base, out_base, files, codes, outfile, showasm, showast, do_verify)
-        print '# decompiled %i files: %i okay, %i failed, %i verify failed' % result
+        (t, o, f, v, s) = main(src_base, out_base, files, codes, outfile, 
+                               showasm, showast, do_verify, keep_existing)
+        print ('# decompiled %i files: %i okay, %i failed, %i verify failed,'
+               ' %i skipped' % (t, o, f, v, s) )
     except (KeyboardInterrupt):
         pass
     except verify.VerifyCmpError:
@@ -145,20 +150,24 @@ else:
     
     def process_func():
         try:
-            (tot_files, okay_files, failed_files, verify_failed_files) = (0,0,0,0)
+            (tot_files, okay_files, failed_files, 
+             verify_failed_files, skipped_files ) = (0,0,0,0,0)
             while 1:
                 f = fqueue.get()
                 if f == None:
                     break
-                (t, o, f, v) = \
-                    main(src_base, out_base, [f], codes, outfile, showasm, showast, do_verify)
+                (t, o, f, v, s) = \
+                    main( src_base, out_base, [f], codes, outfile, showasm, 
+                          showast, do_verify, keep_existing )
                 tot_files += t
                 okay_files += o
                 failed_files += f
                 verify_failed_files += v
+                skipped_files += s
         except (Empty, KeyboardInterrupt):
             pass
-        rqueue.put((tot_files, okay_files, failed_files, verify_failed_files))
+        rqueue.put((tot_files, okay_files, failed_files, 
+                    verify_failed_files, skipped_files))
         rqueue.close()
 
     try:
@@ -168,17 +177,20 @@ else:
         for p in procs:
             p.join()
         try:
-            (tot_files, okay_files, failed_files, verify_failed_files) = (0,0,0,0)
+            (tot_files, okay_files, failed_files, 
+             verify_failed_files, skipped_files) = (0,0,0,0,0)
             while 1:
-                (t, o, f, v) = rqueue.get(False)
+                (t, o, f, v, s) = rqueue.get(False)
                 tot_files += t
                 okay_files += o
                 failed_files += f
                 verify_failed_files += v
+                skipped_files += s
         except Empty:
             pass
-        print '# decompiled %i files: %i okay, %i failed, %i verify failed' % \
-              (tot_files, okay_files, failed_files, verify_failed_files)
+        print ('# decompiled %i files: %i okay, %i failed, %i verify failed,'
+               ' %i skipped' % (tot_files, okay_files, failed_files, 
+                                verify_failed_files, skipped_files) )
     except (KeyboardInterrupt, OSError):
         pass
         

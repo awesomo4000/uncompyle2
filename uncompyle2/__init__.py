@@ -153,7 +153,7 @@ else:
         return ''
 
 def main(in_base, out_base, files, codes, outfile=None,
-         showasm=0, showast=0, do_verify=0):
+         showasm=0, showast=0, do_verify=0, keep_existing=0):
     '''
     in_base	base directory for input files
     out_base	base directory for output files (ignored when
@@ -177,7 +177,7 @@ def main(in_base, out_base, files, codes, outfile=None,
         return open(outfile, 'w')
 
     of = outfile
-    tot_files = okay_files = failed_files = verify_failed_files = 0
+    tot_files = okay_files = failed_files = verify_failed_files =skipped_files = 0
 
     #for code in codes:
     #    version = sys.version[:3] # "2.5"
@@ -190,11 +190,19 @@ def main(in_base, out_base, files, codes, outfile=None,
         #print >>sys.stderr, infile
 
         if of: # outfile was given as parameter
+            if os.path.isfile(of) and keep_existing:
+                print "# skipped %s" % outfile
+                skipped_files += 1
+                continue
             outstream = _get_outstream(outfile)
         elif out_base is None:
             outstream = sys.stdout
         else:
             outfile = os.path.join(out_base, file) + '_dis'
+            if os.path.isfile(outfile) and keep_existing:
+                print "# skipped %s" % outfile
+                skipped_files += 1
+                continue
             outstream = _get_outstream(outfile)
         #print >>sys.stderr, outfile 
 
@@ -235,9 +243,12 @@ def main(in_base, out_base, files, codes, outfile=None,
                 okay_files += 1
                 if not outfile: print '\n# okay decompyling', infile, __memUsage()
         if outfile:
-            sys.stdout.write("decompiled %i files: %i okay, %i failed, %i verify failed\r" % (tot_files, okay_files, failed_files, verify_failed_files))
+            sys.stdout.write( ("decompiled %i files: %i okay,"
+                               " %i failed, %i verify failed,"
+                               " %i skipped\n") % (tot_files, okay_files, failed_files,
+                                                  verify_failed_files, skipped_files) )
             sys.stdout.flush()
     if outfile:
         sys.stdout.write("\n")
         sys.stdout.flush()
-    return (tot_files, okay_files, failed_files, verify_failed_files)
+    return ( tot_files, okay_files, failed_files, verify_failed_files, skipped_files )
